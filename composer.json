@@ -1,5 +1,5 @@
 {
-    "name": "johncarlson21/api",
+    "name": "johncarlson21/chronicle-api",
     "description": "Api to connect to Chronicle HigherEd Api",
     "type": "library",
     "require": {
