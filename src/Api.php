@@ -40,8 +40,9 @@ class Api
 	
 	public function __construct()
 	{
+		$dir = $_SERVER['DOCUMENT_ROOT'] . "/var/log/";
 		$logger = new Logger('chronicle-api');
-		$logger->pushHandler(new StreamHandler('/home/surethingweb/public_html/var/log/chron-api.log', Logger::DEBUG));
+		$logger->pushHandler(new StreamHandler($dir . 'chron-api.log', Logger::DEBUG));
 		$this->logger = $logger;
 	}
 	
@@ -54,6 +55,20 @@ class Api
 		$this->logger->warning('getEstatusList status code: ' . $this->error_code);
 		
 		return $res->getBody();
+	}
+	
+	public function getPackages() {
+		$client = new Client(['base_uri' => $this->api_url]);
+			$res = $client->request('GET', 'adorders/packages/submitted_by/acctspayable@graystoneadv.com/' . $this->auth_key . $this->pub_code . "/format/" . $this->format);
+		
+			$response = $res->getBody();
+		
+			$response = rtrim($response, "\0");
+			$response = json_decode($response,true);
+		
+			$packages = $response['items'];
+		
+			return $packages;
 	}
 	
 	public function getPickLists() {
@@ -108,14 +123,14 @@ class Api
 		$params = [
 			'submitted_by' => 'acctspayable@graystoneadv.com',
 			'ad_placer' => 'jbender@graystoneadv.com',
-			'billto_adplacer' => true,
+			'billto_adplacer' => 'True',
 			'organizationid' => $post['acf_fields']['organization'], // needed from picklist
-			'apisource' => 'MBC-Api',
+			'apisource' => 'GG',
 			'positiontitle' => $post['post_title'],
 			'positiondetails' => $post['post_content'],
 			'employmentlevel' => $post['acf_fields']['employment_level'],
 			'employmentstatus' => $post['acf_fields']['job_type'], // from picklist
-			'onlineinstruction' => false, // will not change
+			'onlineinstruction' => 'False', // will not change
 			'country' => 'United States of America', // will not change
 			'state' => $post['acf_fields']['ad_state'],
 			'zipcode' => $post['acf_fields']['ad_zipcode'],
@@ -130,13 +145,13 @@ class Api
 			'applicationemail' => $post['acf_fields']['response_email'],
 			'applicationurl' => $post['acf_fields']['response_url'],
 			'applicationdeadline' => $post['acf_fields']['apply_by_date'],
-			'openuntilfilled' => true,
+			'openuntilfilled' => $post['acf_fields']['open_till_full'],
 			'internaljobcode' => $post['ID'], // would be post id
 			'externalid' => $post['ID'], // would be post id
 			'ponumber' => $post['acf_fields']['purchase_order'],
-			'enhancements' => '',
-			'packageid' => '44113', // need to know what we are going to do with this one
-			'donotusepkg' => true,
+			//'enhancements' => '',
+			'packageid' => $post['acf_fields']['chronicle_package']->slug, //'44113', // need to know what we are going to do with this one
+			'donotusepkg' => $post['acf_fields']['do_not_use_package'], //'True',
 			'authkey' => $this->authkey,
 			'pubcode' => $this->pubcode
 		];
@@ -190,14 +205,14 @@ class Api
 		$params = [
 			'submitted_by' => 'acctspayable@graystoneadv.com',
 			'ad_placer' => 'jbender@graystoneadv.com',
-			'billto_adplacer' => true,
+			'billto_adplacer' => 'True',
 			'organizationid' => $post['acf_fields']['organization'], // needed from picklist
-			'apisource' => 'MBC-Api',
+			'apisource' => 'GG',
 			'positiontitle' => $post['post_title'],
 			'positiondetails' => $post['post_content'],
 			'employmentlevel' => $post['acf_fields']['employment_level'],
 			'employmentstatus' => $post['acf_fields']['job_type'], // from picklist
-			'onlineinstruction' => false, // will not change
+			'onlineinstruction' => 'False', // will not change
 			'country' => 'United States of America', // will not change
 			'state' => $post['acf_fields']['ad_state'],
 			'zipcode' => $post['acf_fields']['ad_zipcode'],
@@ -212,13 +227,13 @@ class Api
 			'applicationemail' => $post['acf_fields']['response_email'],
 			'applicationurl' => $post['acf_fields']['response_url'],
 			'applicationdeadline' => $post['acf_fields']['apply_by_date'],
-			'openuntilfilled' => true,
+			'openuntilfilled' => $post['acf_fields']['open_till_full'],
 			'internaljobcode' => $post['ID'], // would be post id
 			'externalid' => $post['ID'], // would be post id
 			'ponumber' => $post['acf_fields']['purchase_order'],
-			'enhancements' => '',
-			'packageid' => '44113', // need to know what we are going to do with this one
-			'donotusepkg' => false,
+			//'enhancements' => '',
+			'packageid' => $post['acf_fields']['chronicle_package']->slug, //'44113', // need to know what we are going to do with this one
+			'donotusepkg' => $post['acf_fields']['do_not_use_package'], //'True',
 			'authkey' => $this->authkey,
 			'pubcode' => $this->pubcode
 		];
@@ -252,8 +267,42 @@ class Api
 		
 	}
 	
-	public function removeJob() {
+	public function removeJob($post_id, $post_meta) {
+		// make sure this post has an orderid
+		if (!isset($post_meta['orderid']) || empty($post_meta['orderid'])) { 
+			$this->error_code = 400;
+			$this->logger->error('post id: '.$post_id);
+			$this->logger->error("No order id for post.");
+			$error_message = array(
+				'errorMessage' => array("No order id for post.")
+			);
+			return $error_message;
+		}
 		
+		$order_id = $post_meta['orderid'];
+		
+		$client = new Client(['base_uri' => $this->api_url]);
+		$res = $client->request('DELETE', 
+					'adorders/order/id/' . $order_id . $this->auth_key . "/submitted_by/acctspayable@graystoneadv.com/format/" . $this->format,
+					[
+						'debug' => $this->debug,
+						'http_errors' => false
+					]
+				);
+		$this->error_code = $res->getStatusCode();
+		$this->logger->warning('expire job status code: ' . $this->error_code);
+		
+		$response = $res->getBody();
+		$response = rtrim($response, "\0");
+		$response = json_decode($response,true);
+		
+		if ($this->error_code >= 300) {
+			$this->logger->error('post id: '.$post_id);
+			$this->logger->error($res->getBody());
+			//error_log(print_r($response,true));
+		}
+		
+		return $response;
 	}
 	
 	public function getErrorCode() {
